@@ -1,0 +1,24 @@
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t intelligent-extraction:ci .
+
+      - name: Run tests inside Docker
+        run: |
+          docker run --rm \
+            --entrypoint python \
+            intelligent-extraction:ci \
+            -m pytest -v

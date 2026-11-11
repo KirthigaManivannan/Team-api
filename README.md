@@ -112,3 +112,8 @@ Errors return `{"detail": "..."}` with 400/413/415 (bad upload), 422 (unreadable
 - The `/extract` endpoint makes two paid LLM calls per document.
 - No login or rate limiting; add them before exposing the app publicly.
 - Future: automatic email forwarding via a dedicated mailbox, batch export (CSV), a database for history.
+
+## CI/CD Pipeline
+
+This project uses GitHub Actions for continuous integration.
+Automated tests and Docker image builds run whenever a pull request is created against the main branch.
