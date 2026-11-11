@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -7,19 +8,57 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements-dev.txt
-      - name: Install Tesseract (used by the OCR tests)
-        run: sudo apt-get update -o Acquire::Retries=3
-             sudo apt-get install -y -o Acquire::Retries=3 tesseract-ocr tesseract-ocr-eng
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+
+      - name: Check network connectivity
+        run: |
+          echo "Checking Ubuntu mirror DNS..."
+          getent hosts azure.archive.ubuntu.com || true
+          getent hosts archive.ubuntu.com || true
+
+          echo "Checking archive connectivity..."
+          curl -I --max-time 15 https://archive.ubuntu.com/ubuntu/ || true
+
+      - name: Check existing Tesseract installation
+        run: |
+          if command -v tesseract >/dev/null 2>&1; then
+            echo "Tesseract is already installed."
+            tesseract --version
+          else
+            echo "Tesseract is not installed."
+          fi
+
+      - name: Install Tesseract
+        run: |
+          if command -v tesseract >/dev/null 2>&1 && tesseract --list-langs | grep -q "eng"; then
+            echo "Tesseract and English language data are already available."
+          else
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y -o Acquire::Retries=3 tesseract-ocr tesseract-ocr-eng
+          fi
+
+      - name: Verify Tesseract
+        run: |
+          tesseract --version
+          tesseract --list-langs
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
       - name: Run tests
         run: python -m pytest -v
+
       - name: Build Docker image
         run: docker build -t intelligent-extraction:ci .
