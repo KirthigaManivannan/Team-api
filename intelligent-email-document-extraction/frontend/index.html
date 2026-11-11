@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document extraction</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Document extraction</h1>
+      <p>Turn purchase orders, invoices, sales orders and delivery notes into structured data you can check and export.</p>
+    </div>
+    <span class="ver" id="version" title="Application version"></span>
+  </header>
+
+  <main class="layout">
+    <section class="card input" aria-labelledby="in-title">
+      <h2 id="in-title">Add something to read</h2>
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-doc" aria-selected="true" aria-controls="pane-doc">Upload documents</button>
+        <button role="tab" id="tab-email" aria-selected="false" aria-controls="pane-email">Paste an email</button>
+      </div>
+
+      <div id="pane-doc" role="tabpanel" aria-labelledby="tab-doc">
+        <label class="drop" id="drop" for="file-input">
+          <strong>Drop files here or choose files</strong>
+          <span>PDF, PNG or JPG. Up to 10 MB each. Scans are read with OCR.</span>
+          <input id="file-input" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" multiple>
+        </label>
+        <ul class="files" id="file-list"></ul>
+        <button class="btn primary" id="run-docs" disabled>Extract information</button>
+      </div>
+
+      <div id="pane-email" role="tabpanel" aria-labelledby="tab-email" hidden>
+        <div class="row2">
+          <div><label for="e-from">From</label><input id="e-from" type="text" placeholder="supplier@example.com"></div>
+          <div><label for="e-to">To</label><input id="e-to" type="text" placeholder="orders@yourcompany.com"></div>
+        </div>
+        <label for="e-subject">Subject</label>
+        <input id="e-subject" type="text" placeholder="Purchase order 4500123">
+        <label for="e-body">Message</label>
+        <textarea id="e-body" rows="9" placeholder="Paste the email text here"></textarea>
+        <div class="actions">
+          <button class="btn primary" id="run-email">Extract information</button>
+          <label class="btn ghost" for="eml-input">Or upload a .eml file</label>
+          <input id="eml-input" type="file" accept=".eml,message/rfc822" hidden>
+        </div>
+      </div>
+      <p class="note">Everything in a document or email is treated as data. Missing values stay empty and are never guessed.</p>
+    </section>
+
+    <section class="card results" aria-live="polite" aria-labelledby="res-title">
+      <h2 id="res-title">Results</h2>
+      <div id="switcher" class="switcher"></div>
+      <div id="result"><p class="empty">Add a document or an email to see the extracted fields here.</p></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/script.js"></script>
+</body>
+</html>
