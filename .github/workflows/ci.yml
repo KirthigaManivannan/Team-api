@@ -15,7 +15,8 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - name: Install Tesseract (used by the OCR tests)
-        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
+        run: sudo apt-get update -o Acquire::Retries=3
+             sudo apt-get install -y -o Acquire::Retries=3 tesseract-ocr tesseract-ocr-eng
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run tests
