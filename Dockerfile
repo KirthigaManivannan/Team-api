@@ -7,11 +7,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install -r requirements.txt -r requirements-dev.txt
 
 COPY app ./app
 COPY frontend ./frontend
+COPY tests ./tests
 
 RUN useradd --create-home appuser
 USER appuser
