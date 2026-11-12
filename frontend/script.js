@@ -242,3 +242,161 @@ function renderResult(it) {
 }
 
 fetch("/health").then((r) => r.json()).then((j) => ($("#version").textContent = "v" + j.version)).catch(() => {});
+
+// Gmail extraction results
+
+async function loadGmailResults() {
+  const container = document.querySelector("#gmail-results");
+
+  container.textContent = "Loading Gmail results...";
+
+  try {
+    const response = await fetch("/gmail/results?limit=50");
+
+    if (!response.ok) {
+      throw new Error("Unable to retrieve Gmail results.");
+    }
+
+    const data = await response.json();
+
+    container.replaceChildren();
+
+    if (data.results.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent = "No Gmail documents have been saved yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    data.results.forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "gmail-result";
+
+      const heading = document.createElement("h3");
+      heading.textContent = item.subject || "No subject";
+
+      const sender = document.createElement("p");
+      sender.textContent = "From: " + (item.sender || "Unknown");
+
+      const filename = document.createElement("p");
+      filename.textContent = "File: " + item.filename;
+
+      const type = document.createElement("p");
+      type.textContent = "Document type: " + (item.document_type || "Unknown");
+
+      const status = document.createElement("p");
+      status.textContent =
+        "Validation: " + (item.validation?.status || "Not available");
+
+      const fieldsTitle = document.createElement("h4");
+      fieldsTitle.textContent = "Extracted fields";
+
+      const fieldsList = document.createElement("ul");
+
+      Object.entries(item.fields || {}).forEach(([key, value]) => {
+        const li = document.createElement("li");
+        li.textContent = `${key}: ${value ?? ""}`;
+        fieldsList.appendChild(li);
+      });
+
+      card.append(
+        heading,
+        sender,
+        filename,
+        type,
+        status,
+        fieldsTitle,
+        fieldsList
+      );
+
+      container.appendChild(card);
+    });
+
+  } catch (error) {
+    container.textContent = error.message;
+  }
+}
+
+// Refresh button
+document
+  .querySelector("#refresh-gmail")
+  .addEventListener("click", loadGmailResults);
+
+// Load results when the website opens
+loadGmailResults();
+
+// Gmail processing history
+
+async function loadGmailHistory() {
+  const tableBody = document.querySelector("#gmail-history");
+
+  tableBody.replaceChildren();
+
+  const loadingRow = document.createElement("tr");
+  const loadingCell = document.createElement("td");
+  loadingCell.colSpan = 4;
+  loadingCell.textContent = "Loading history...";
+  loadingRow.appendChild(loadingCell);
+  tableBody.appendChild(loadingRow);
+
+  try {
+    const response = await fetch("/gmail/history?limit=100");
+
+    if (!response.ok) {
+      throw new Error("Unable to load Gmail history.");
+    }
+
+    const data = await response.json();
+
+    tableBody.replaceChildren();
+
+    if (data.history.length === 0) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 4;
+      cell.textContent = "No Gmail processing history available yet.";
+      row.appendChild(cell);
+      tableBody.appendChild(row);
+      return;
+    }
+
+    data.history.forEach((item) => {
+      const row = document.createElement("tr");
+
+      const subject = document.createElement("td");
+      subject.textContent = item.subject || "No subject";
+
+      const status = document.createElement("td");
+      status.textContent = item.status || "Unknown";
+      status.className = "history-status";
+
+      const processedAt = document.createElement("td");
+      processedAt.textContent = item.processed_at || "-";
+
+      const messageId = document.createElement("td");
+      messageId.textContent = item.message_id || "-";
+
+      row.append(subject, status, processedAt, messageId);
+      tableBody.appendChild(row);
+    });
+
+  } catch (error) {
+    tableBody.replaceChildren();
+
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.textContent = error.message;
+    row.appendChild(cell);
+    tableBody.appendChild(row);
+  }
+}
+
+// Refresh history button
+document
+  .querySelector("#refresh-history")
+  .addEventListener("click", loadGmailHistory);
+
+// Load history when website opens
+loadGmailHistory();

@@ -1,4 +1,9 @@
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -6,8 +11,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.errors import AppError
-from app.routers import document, email, extraction, duplicate, matching, payment,export
+from app.routers import document, email, extraction, duplicate, matching, payment, export, gmail
 
+from app.services.gmail_scheduler import (
+    start_gmail_scheduler,
+    stop_gmail_scheduler,
+)
 ROOT = Path(__file__).resolve().parent.parent
 
 # Read the version from version.txt.
@@ -16,10 +25,17 @@ VERSION_FILE = Path(__file__).parent / "version.txt"
 VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
 
 app = FastAPI(
-    title="OCR Email & Document Extraction System",
+    title="Intelligent Email & Document Extraction System",
     version=VERSION
 )
+@app.on_event("startup")
+def start_background_tasks():
+    start_gmail_scheduler()
 
+
+@app.on_event("shutdown")
+def stop_background_tasks():
+    stop_gmail_scheduler()
 
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
@@ -41,6 +57,7 @@ app.include_router(duplicate.router)
 app.include_router(matching.router)
 app.include_router(payment.router)
 app.include_router(export.router)
+app.include_router(gmail.router)
 
 # Serve the web UI last so API routes take priority.
 frontend_dir = ROOT / "frontend"

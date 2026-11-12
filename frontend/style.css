@@ -97,3 +97,70 @@ pre.out.text{background:var(--bg);color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);background:var(--ink);color:#fff;padding:.6rem 1.1rem;border-radius:10px;font-size:.9rem;max-width:90vw;z-index:10}
 .toast.error{background:var(--bad)}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}.drop{transition:none}}
+
+/* Gmail results and processing history */
+
+.gmail-section {
+  max-width: 1280px;
+  margin: 0 auto 1.25rem;
+}
+
+.gmail-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.gmail-heading p {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.gmail-result {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.8rem;
+  background: var(--surface);
+}
+
+.gmail-result h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.gmail-result p {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin: 0.25rem 0;
+}
+
+.gmail-result h4 {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.9rem;
+}
+
+.gmail-result ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.88rem;
+}
+
+.history-status {
+  font-weight: 600;
+  color: var(--good);
+}
+
+#gmail-history td {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .gmail-section {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
+}

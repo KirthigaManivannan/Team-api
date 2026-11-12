@@ -60,7 +60,58 @@
     </section>
   </main>
 
+  
+  </main>
+
+  <section class="gmail-section card" aria-labelledby="gmail-title">
+    <div class="gmail-heading">
+      <div>
+        <h2 id="gmail-title">Gmail Processed Documents</h2>
+        <p>Documents automatically extracted from your Invoice-Processing Gmail label.</p>
+      </div>
+      <button class="btn primary" id="refresh-gmail" type="button">
+        Refresh results
+      </button>
+    </div>
+
+    <div id="gmail-results" aria-live="polite">
+      <p class="empty">Loading Gmail documents...</p>
+    </div>
+  </section>
+
+  <section class="gmail-section card" aria-labelledby="history-title">
+    <div class="gmail-heading">
+      <div>
+        <h2 id="history-title">Gmail Processing History</h2>
+        <p>Previously processed emails stored in the database.</p>
+      </div>
+      <button class="btn primary" id="refresh-history" type="button">
+        Refresh history
+      </button>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Email Subject</th>
+            <th>Status</th>
+            <th>Processed At</th>
+            <th>Message ID</th>
+          </tr>
+        </thead>
+        <tbody id="gmail-history">
+          <tr>
+            <td colspan="4">Loading history...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+
   <div id="toast" class="toast" role="status" hidden></div>
+
   <script src="/script.js"></script>
 </body>
 </html>

@@ -7,3 +7,6 @@ __pycache__/
 *.zip
 .DS_Store
 .vscode/
+credentials.json
+token.json
+downloads/

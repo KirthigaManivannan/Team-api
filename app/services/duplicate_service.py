@@ -108,4 +108,96 @@ def get_registered_invoices(db_path=None):
             ORDER BY id
         """)
 
-        return [dict(row) for row in cursor.fetchall()]
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def initialize_gmail_history(db_path=None):
+    """Create a table to track Gmail messages already processed."""
+
+    path = initialize_database(db_path)
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS processed_gmail_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id TEXT NOT NULL UNIQUE,
+                subject TEXT,
+                status TEXT NOT NULL,
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+    return path
+
+
+def is_gmail_message_processed(message_id, db_path=None):
+    """Check whether a Gmail message has already been processed."""
+
+    path = initialize_gmail_history(db_path)
+
+    with sqlite3.connect(path) as connection:
+        result = connection.execute(
+            """
+            SELECT 1
+            FROM processed_gmail_messages
+            WHERE message_id = ?
+            """,
+            (message_id,)
+        ).fetchone()
+
+    return result is not None
+
+
+def register_gmail_message(
+    message_id,
+    subject,
+    status="completed",
+    db_path=None
+):
+    """Register a Gmail message after processing."""
+
+    path = initialize_gmail_history(db_path)
+
+    with sqlite3.connect(path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT OR IGNORE INTO processed_gmail_messages (
+                message_id,
+                subject,
+                status
+            )
+            VALUES (?, ?, ?)
+            """,
+            (message_id, subject, status)
+        )
+
+    return cursor.rowcount > 0
+
+def get_gmail_processing_history(limit=50):
+    """Retrieve previously processed Gmail messages."""
+
+    path = initialize_gmail_history()
+
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+
+        rows = connection.execute("""
+            SELECT
+                message_id,
+                subject,
+                status,
+                processed_at
+            FROM processed_gmail_messages
+            ORDER BY processed_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+    return [
+        {
+            "message_id": row["message_id"],
+            "subject": row["subject"],
+            "status": row["status"],
+            "processed_at": row["processed_at"]
+        }
+        for row in rows
+    ]
