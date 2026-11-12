@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.errors import AppError
-from app.routers import document, email, extraction
+from app.routers import document, email, extraction, matching
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = (Path(__file__).parent / "version.txt").read_text().strip()
@@ -26,7 +26,7 @@ def health():
 app.include_router(email.router)
 app.include_router(document.router)
 app.include_router(extraction.router)
-
+app.include_router(matching.router)
 # Serve the web UI last so API routes take priority.
 frontend_dir = ROOT / "frontend"
 if frontend_dir.is_dir():
