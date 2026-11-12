@@ -92,3 +92,20 @@ def check_and_register_invoice(fields, db_path=None):
         "message": "New invoice registered successfully.",
         "invoice_number": invoice_number,
     }
+def get_registered_invoices(db_path=None):
+    """Retrieve all registered invoices from the database."""
+    path = initialize_database(db_path)
+
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+
+        cursor = connection.execute("""
+            SELECT
+                invoice_number,
+                supplier_name,
+                invoice_date
+            FROM invoices
+            ORDER BY id
+        """)
+
+        return [dict(row) for row in cursor.fetchall()]
