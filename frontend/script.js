@@ -79,7 +79,7 @@ drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
 
 /* ---------- processing ---------- */
 function newItem(label) {
-  const it = { id: nextId++, label, status: "processing", step: "Reading the content…", data: null, text: "", error: null, edited: new Set(), view: "fields" };
+  const it = { id: nextId++, label, status: "processing", step: "Reading the content…", data: null, text: "", error: null, edited: new Set(), view: "fields", checks: {}, dupKey: null };
   items.push(it); activeId = it.id; render(); return it;
 }
 
@@ -88,18 +88,22 @@ async function runExtract(it, textResult) {
   it.step = "Classifying and extracting fields…"; render();
   it.data = await postJSON("/extract", { filename: textResult.filename, text: textResult.text });
   it.status = "done"; render();
+  await runInvoiceChecks(it);   // never throws: failures are shown inside the checks panel
 }
 function fail(it, e) { it.status = "error"; it.error = e.message; render(); notify(e.message, "error"); }
 
 async function processFile(file) {
   const it = newItem(file.name);
   try { await runExtract(it, await postFile("/document/upload", file)); } catch (e) { fail(it, e); }
+  return it;
 }
 
 $("#run-docs").onclick = async () => {
   const files = queued; queued = []; renderQueue();
   setBusy(true);
-  for (const f of files) await processFile(f);
+  const batch = [];
+  for (const f of files) batch.push(await processFile(f));
+  await runMatching(batch);   // only runs for exactly one Purchase Order + one Invoice
   setBusy(false);
 };
 
@@ -138,6 +142,7 @@ function setBusy(b) { $("#run-email").disabled = b; $("#run-docs").disabled = b 
 
 /* ---------- rendering ---------- */
 function render() {
+  $("#export-csv").hidden = !items.some((x) => x.status === "done" && x.data);
   const sw = $("#switcher"); sw.replaceChildren();
   if (items.length > 1) items.forEach((it) => sw.append(h("button", { type: "button", "aria-pressed": String(it.id === activeId), onclick: () => { activeId = it.id; render(); } }, it.label)));
   const box = $("#result"); box.replaceChildren();
@@ -205,6 +210,9 @@ function renderResult(it) {
     parts.push(ul);
   } else parts.push(h("ul", { class: "issues" }, h("li", {}, "No problems found. Please still compare the values with the original.")));
 
+  const checksPanel = renderChecks(it);
+  if (checksPanel) parts.push(checksPanel);
+
   parts.push(h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Field"), h("th", {}, "Value (editable)"))), h("tbody", {}, fieldRows))));
 
   if (d.item_specs.length) {
@@ -240,5 +248,167 @@ function renderResult(it) {
   parts.push(h("p", { class: "note" }, "Warnings reflect the original extraction. Fields you edit are listed under user_edited_fields in the JSON."));
   return h("div", {}, parts);
 }
+
+/* ---------- automatic checks (duplicate, due date, PO-invoice match) ---------- */
+const hasValue = (v) => v != null && String(v).trim() !== "";
+function toNum(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string" && v.trim() !== "") { const n = Number(v.replace(/,/g, "")); return Number.isFinite(n) ? n : null; }
+  return null;
+}
+const matches = [];   // { poId, invId, state, data, message, dropped }
+
+async function runInvoiceChecks(it) {
+  if (!it.data || it.data.document_type !== "Invoice") return;
+  const f = it.data.fields || {};
+  await Promise.all([checkDuplicate(it, f), checkDueDate(it, f)]);
+}
+
+async function checkDuplicate(it, f) {
+  const need = [["invoice_number", "invoice number"], ["supplier_name", "supplier name"], ["invoice_date", "invoice date"]];
+  const missing = need.filter(([k]) => !hasValue(f[k])).map(([, label]) => label);
+  if (missing.length) { it.checks.duplicate = { state: "skipped", message: `Not checked: ${missing.join(", ")} not found in the document.` }; render(); return; }
+  const payload = { invoice_number: String(f.invoice_number).trim(), supplier_name: String(f.supplier_name).trim(), invoice_date: String(f.invoice_date).trim() };
+  const key = JSON.stringify(payload);
+  if (it.dupKey === key) return;   // same values as last time: the server already registered them
+  it.dupKey = key;
+  it.checks.duplicate = { state: "pending" }; render();
+  try { it.checks.duplicate = { state: "done", ...(await postJSON("/invoices/check-duplicate", payload)) }; }
+  catch (e) { it.checks.duplicate = { state: "error", message: e.message }; }
+  render();
+}
+
+async function checkDueDate(it, f) {
+  if (!hasValue(f.due_date)) { it.checks.due = { state: "skipped", message: "Not checked: no due date found in the document." }; render(); return; }
+  it.checks.due = { state: "pending" }; render();
+  try {
+    const body = { invoice_number: hasValue(f.invoice_number) ? String(f.invoice_number).trim() : null, due_date: String(f.due_date).trim() };
+    it.checks.due = { state: "done", ...(await postJSON("/payment/check-due-date", body)) };
+  } catch (e) { it.checks.due = { state: "error", message: e.message }; }
+  render();
+}
+
+/* Shape one extracted document for POST /match/po-invoice (the API needs a supplier, a numeric total and valid line items). */
+function matchPayload(it) {
+  const f = it.data.fields || {};
+  const supplier = hasValue(f.supplier_name) ? String(f.supplier_name).trim() : "";
+  const total = toNum(f.total_amount);
+  const missing = [];
+  if (!supplier) missing.push("supplier name");
+  if (total == null) missing.push("total amount");
+  const all = it.data.line_items || [];
+  const lines = all
+    .map((r) => ({ description: hasValue(r.description) ? String(r.description).trim() : "", quantity: toNum(r.quantity), unit_price: toNum(r.unit_price), line_total: toNum(r.line_total) }))
+    .filter((r) => r.description && r.quantity != null && r.quantity >= 0);
+  return { missing, dropped: all.length - lines.length, doc: { fields: { supplier_name: supplier, currency: hasValue(f.currency) ? String(f.currency).trim() : null, total_amount: total }, line_items: lines } };
+}
+
+async function runMatching(batch) {
+  const done = batch.filter((x) => x.status === "done" && x.data);
+  const pos = done.filter((x) => x.data.document_type === "Purchase Order");
+  const invs = done.filter((x) => x.data.document_type === "Invoice");
+  if (pos.length === 1 && invs.length === 1) await matchPair(pos[0], invs[0]);
+}
+
+async function matchPair(po, inv) {
+  let m = matches.find((x) => x.poId === po.id && x.invId === inv.id);
+  if (!m) { m = { poId: po.id, invId: inv.id }; matches.push(m); }
+  const a = matchPayload(po), b = matchPayload(inv);
+  m.dropped = a.dropped + b.dropped; m.data = null; m.message = "";
+  const missing = [...a.missing.map((x) => "purchase order " + x), ...b.missing.map((x) => "invoice " + x)];
+  if (missing.length) { m.state = "skipped"; m.message = `Not compared: ${missing.join(", ")} not found.`; render(); return; }
+  m.state = "pending"; render();
+  try { m.data = await postJSON("/match/po-invoice", { purchase_order: a.doc, invoice: b.doc }); m.state = "done"; }
+  catch (e) { m.state = "error"; m.message = e.message; }
+  render();
+}
+
+const badge = (text, kind) => h("span", { class: "badge " + kind }, text);
+const KIND = { Match: "good", Mismatch: "bad", "Needs Review": "warn" };
+
+function checkRow(title, state, badgeEl, message, extra) {
+  return h("div", { class: "check" },
+    h("div", { class: "check-head" }, h("strong", {}, title), state === "pending" ? h("span", { class: "spin small", "aria-hidden": "true" }) : badgeEl),
+    message ? h("div", { class: "check-msg" }, message) : null, extra || null);
+}
+
+function dupRow(c) {
+  const t = "Duplicate invoice check";
+  if (!c || c.state === "pending") return checkRow(t, "pending", null, "Checking…");
+  if (c.state === "skipped") return checkRow(t, c.state, badge("Skipped", ""), c.message);
+  if (c.state === "error") return checkRow(t, c.state, badge("Failed", "bad"), c.message);
+  return checkRow(t, c.state, c.duplicate ? badge("Duplicate", "bad") : badge("New invoice", "good"), c.message);
+}
+
+function dueRow(c) {
+  const t = "Payment due date";
+  if (!c || c.state === "pending") return checkRow(t, "pending", null, "Checking…");
+  if (c.state === "skipped") return checkRow(t, c.state, badge("Skipped", ""), c.message);
+  if (c.state === "error") return checkRow(t, c.state, badge("Failed", "bad"), c.message);
+  const kind = { Overdue: "bad", "Due Today": "warn", Upcoming: "good", "Invalid Date": "warn" }[c.status] || "";
+  return checkRow(t, c.state, badge(c.status, kind), c.message + (c.due_date ? ` (due ${c.due_date})` : ""));
+}
+
+function matchRow(m) {
+  const po = items.find((x) => x.id === m.poId), inv = items.find((x) => x.id === m.invId);
+  const t = `PO–Invoice match: ${po ? po.label : "PO"} ↔ ${inv ? inv.label : "invoice"}`;
+  if (m.state === "pending") return checkRow(t, "pending", null, "Comparing…");
+  if (m.state === "skipped") return checkRow(t, m.state, badge("Skipped", ""), m.message);
+  if (m.state === "error") return checkRow(t, m.state, badge("Failed", "bad"), m.message);
+  const d = m.data, c = d.checks || {};
+  const lines = [["Supplier name", c.supplier_name], ["Currency", c.currency], ["Total amount", c.total_amount]]
+    .map(([label, v]) => h("li", {}, label + ": ", badge(v || "n/a", KIND[v] || "")));
+  for (const li of c.line_items || []) lines.push(h("li", {}, `Item “${li.description}”: `, badge(li.status, KIND[li.status] || ""), li.message ? " " + li.message : ""));
+  const extra = h("div", {}, h("ul", { class: "match-list" }, lines),
+    (d.issues || []).length ? h("ul", { class: "issues" }, d.issues.map((x) => h("li", { class: "warning" }, x))) : null,
+    m.dropped ? h("div", { class: "check-msg" }, `${m.dropped} line item(s) without a description or quantity were left out of the comparison.`) : null);
+  return checkRow(t, m.state, badge(d.status, KIND[d.status] || ""), null, extra);
+}
+
+function renderChecks(it) {
+  const rows = [];
+  const isInvoice = it.data.document_type === "Invoice";
+  if (isInvoice) rows.push(dupRow(it.checks.duplicate), dueRow(it.checks.due));
+  const mine = matches.filter((m) => m.poId === it.id || m.invId === it.id);
+  mine.forEach((m) => rows.push(matchRow(m)));
+  if (!rows.length) return null;
+  const rerun = h("button", { class: "btn", type: "button", onclick: async () => {
+    if (isInvoice) await runInvoiceChecks(it);
+    for (const m of mine) { const po = items.find((x) => x.id === m.poId), inv = items.find((x) => x.id === m.invId); if (po && inv) await matchPair(po, inv); }
+  } }, "Re-run checks with edited values");
+  return h("div", { class: "checks" }, h("div", { class: "sub" }, "Automatic checks"), rows, rerun);
+}
+
+/* ---------- CSV export (extracted fields + line items of every processed document) ---------- */
+function csvCell(v) {
+  if (v == null) return "";
+  let s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  if (typeof v !== "number" && /^([=+@\t\r]|-(?!\d))/.test(s)) s = "'" + s;   // stop spreadsheet formula injection
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function buildCsv(docs) {
+  const fieldKeys = [], itemKeys = [];
+  const add = (list, k) => { if (!list.includes(k)) list.push(k); };
+  for (const d of docs) { (d.field_specs || []).forEach((s) => add(fieldKeys, s.key)); (d.item_specs || []).forEach((s) => add(itemKeys, s.key)); }
+  const rows = [["filename", "document_type", "validation_status", ...fieldKeys, "line_no", ...itemKeys.map((k) => "item_" + k)]];
+  for (const d of docs) {
+    const base = [d.filename, d.document_type, d.validation && d.validation.status, ...fieldKeys.map((k) => (d.fields || {})[k])];
+    const lines = d.line_items || [];
+    if (!lines.length) rows.push([...base, "", ...itemKeys.map(() => "")]);
+    else lines.forEach((row, i) => rows.push([...base, i + 1, ...itemKeys.map((k) => row[k])]));
+  }
+  return "\ufeff" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";   // BOM so Excel reads UTF-8
+}
+
+function exportCsv() {
+  const docs = items.filter((x) => x.status === "done" && x.data).map((x) => x.data);
+  if (!docs.length) { notify("Extract a document first.", "error"); return; }
+  const blob = new Blob([buildCsv(docs)], { type: "text/csv;charset=utf-8" });
+  const a = h("a", { href: URL.createObjectURL(blob), download: "extracted-documents.csv" });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  notify(`CSV with ${docs.length} document(s) downloaded.`);
+}
+$("#export-csv").onclick = exportCsv;
 
 fetch("/health").then((r) => r.json()).then((j) => ($("#version").textContent = "v" + j.version)).catch(() => {});
