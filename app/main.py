@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.errors import AppError
-from app.routers import document, email, extraction, duplicate, matching, payment
+from app.routers import document, email, extraction, duplicate, matching, payment,export
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,6 +40,7 @@ app.include_router(extraction.router)
 app.include_router(duplicate.router)
 app.include_router(matching.router)
 app.include_router(payment.router)
+app.include_router(export.router)
 
 # Serve the web UI last so API routes take priority.
 frontend_dir = ROOT / "frontend"
