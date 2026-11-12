@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import shutil
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -27,11 +28,43 @@ async def app_error_handler(request: Request, exc: AppError):
         status_code=exc.status_code,
         content={"detail": exc.message}
     )
-
+@app.middleware("http")
+async def revalidate_frontend_files(request: Request, call_next):
+    """Ask browsers to re-check the UI files, so a new deploy is never hidden by a cached script.js."""
+    response = await call_next(request)
+    if request.method == "GET" and request.url.path in ("/", "/index.html", "/script.js", "/style.css"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 @app.get("/health", tags=["health"])
 def health():
     return {"status": "ok", "version": VERSION}
+@app.get("/health/ocr", tags=["health"])
+def check_ocr():
+    import pytesseract
+
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    if settings.tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+
+    executable = shutil.which("tesseract")
+
+    try:
+        version = str(pytesseract.get_tesseract_version())
+        return {
+            "tesseract_found": True,
+            "executable": executable,
+            "version": version
+        }
+    except Exception as exc:
+        return {
+            "tesseract_found": False,
+            "executable": executable,
+            "error": str(exc)
+        }
 
 
 app.include_router(email.router)

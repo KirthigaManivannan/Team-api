@@ -97,3 +97,20 @@ pre.out.text{background:var(--bg);color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);background:var(--ink);color:#fff;padding:.6rem 1.1rem;border-radius:10px;font-size:.9rem;max-width:90vw;z-index:10}
 .toast.error{background:var(--bad)}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}.drop{transition:none}}
+
+/* results toolbar, automatic checks, CSV export */
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
+.toolbar h2{margin:0}
+.toolbar .btn[hidden]{display:none}
+.checks{display:grid;gap:.5rem;margin:0 0 1.2rem}
+.checks .sub{margin:0 0 .1rem}
+.check{border:1px solid var(--line);border-radius:12px;padding:.6rem .8rem;background:var(--bg)}
+.check-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;font-size:.9rem}
+.check-msg{font-size:.85rem;color:var(--muted);margin-top:.25rem}
+.badge{font-size:.78rem;font-weight:600;border-radius:999px;padding:.15rem .65rem;border:1px solid var(--line);background:#fff;color:var(--muted)}
+.badge.good{background:var(--good-bg);color:var(--good);border-color:transparent}
+.badge.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.badge.bad{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+.spin.small{width:16px;height:16px;border-width:2px}
+.match-list{list-style:none;margin:.4rem 0;padding:0;display:grid;gap:.25rem;font-size:.85rem}
+.checks > .btn{justify-self:start;font-size:.85rem;padding:.4rem .8rem}

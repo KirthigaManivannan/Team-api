@@ -1,4 +1,6 @@
 """Image preprocessing and OCR with Tesseract."""
+import os
+import shutil
 from io import BytesIO
 
 import pytesseract
@@ -22,10 +24,28 @@ def preprocess(img: Image.Image) -> Image.Image:
     return img.filter(ImageFilter.SHARPEN)
 
 
+def _find_tesseract(configured: str) -> str | None:
+    """Use the configured path only if it exists; otherwise look on PATH and in the usual Windows folders."""
+    if configured and os.path.isfile(configured):
+        return configured
+    on_path = shutil.which("tesseract")
+    if on_path:
+        return on_path
+    for candidate in (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 def ocr_image(img: Image.Image) -> str:
     settings = get_settings()
-    if settings.tesseract_cmd:
-        pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+    path = _find_tesseract(settings.tesseract_cmd)
+    if path:
+        pytesseract.pytesseract.tesseract_cmd = path
     try:
         return pytesseract.image_to_string(preprocess(img), lang=settings.ocr_lang).strip()
     except pytesseract.TesseractNotFoundError as exc:
