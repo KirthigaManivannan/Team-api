@@ -69,3 +69,22 @@ class ExtractionResponse(BaseModel):
     item_specs: list[FieldSpecOut]
     validation: ValidationReport
     model: str
+
+
+class DuplicateCheckRequest(BaseModel):
+    invoice_number: str = Field(min_length=1, max_length=200)
+    supplier_name: str = Field(min_length=1, max_length=300)
+    invoice_date: str = Field(min_length=1, max_length=50)
+
+    @field_validator("invoice_number", "supplier_name", "invoice_date")
+    @classmethod
+    def fields_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("This field cannot be empty.")
+        return value.strip()
+
+
+class DuplicateCheckResponse(BaseModel):
+    duplicate: bool
+    message: str
+    invoice_number: str
