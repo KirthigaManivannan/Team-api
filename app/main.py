@@ -16,7 +16,7 @@ VERSION_FILE = Path(__file__).parent / "version.txt"
 VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
 
 app = FastAPI(
-    title="Thee Intelligent Email & Document Extraction System",
+    title="Intelligent Email & Document Extraction System",
     version=VERSION
 )
 
