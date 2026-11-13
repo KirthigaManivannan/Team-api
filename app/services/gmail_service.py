@@ -1,28 +1,39 @@
 
 import base64
+import logging
 import os
 from pathlib import Path
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
+
+logger = logging.getLogger(__name__)
+
 ROOT = Path(__file__).resolve().parents[2]
-TOKEN_PATH = ROOT / "token.json"
+
+# Railway: set TOKEN_PATH=/app/data/token.json
+# Local: defaults to token.json in the project root
+TOKEN_PATH = Path(
+    os.getenv("TOKEN_PATH", str(ROOT / "token.json"))
+)
+
+# Create the directory if it does not exist
+TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 LABEL_NAME = "Invoice-Processing"
 
+# Use Railway's redirect URI in production
 REDIRECT_URI = os.getenv(
     "REDIRECT_URI",
     "http://127.0.0.1:8000/gmail/callback"
 )
+
 logger.info("Gmail OAuth redirect URI: %s", REDIRECT_URI)
+logger.info("Gmail token storage path: %s", TOKEN_PATH)
 
 
 def get_oauth_client_config():
@@ -47,8 +58,9 @@ def get_oauth_client_config():
     }
 
 
-
 def create_oauth_flow(state=None):
+    """Create the Google OAuth flow."""
+
     flow = Flow.from_client_config(
         get_oauth_client_config(),
         scopes=SCOPES,
@@ -61,14 +73,17 @@ def create_oauth_flow(state=None):
     return flow
 
 
-
 def save_credentials(creds):
-    """Save authorized Gmail credentials locally."""
+    """Save authorized Gmail credentials."""
+
+    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     TOKEN_PATH.write_text(
         creds.to_json(),
         encoding="utf-8"
     )
+
+    logger.info("Gmail credentials saved successfully.")
 
 
 def get_gmail_service():
@@ -80,7 +95,8 @@ def get_gmail_service():
         )
 
     creds = Credentials.from_authorized_user_file(
-        str(TOKEN_PATH), SCOPES
+        str(TOKEN_PATH),
+        SCOPES
     )
 
     if creds.expired and creds.refresh_token:
@@ -92,7 +108,11 @@ def get_gmail_service():
             "Gmail authorization expired. Please reconnect your Gmail account."
         )
 
-    return build("gmail", "v1", credentials=creds)
+    return build(
+        "gmail",
+        "v1",
+        credentials=creds
+    )
 
 
 def get_gmail_profile():
