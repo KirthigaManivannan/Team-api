@@ -33,9 +33,9 @@ app = FastAPI(
 )
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("OAUTH_STATE_SECRET"),
+    secret_key=os.getenv("OAUTH_STATE_SECRET", "dev-secret-change-me"),
     same_site="lax",
-    https_only=False
+    https_only=bool(os.getenv("RAILWAY_ENVIRONMENT"))
 )
 @app.on_event("startup")
 def start_background_tasks():

@@ -14,7 +14,10 @@ TOKEN_PATH = ROOT / "token.json"
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 LABEL_NAME = "Invoice-Processing"
 
-REDIRECT_URI = "http://127.0.0.1:8000/gmail/callback"
+REDIRECT_URI = os.getenv(
+    "REDIRECT_URI",
+    "http://127.0.0.1:8000/gmail/callback"
+)
 
 
 def get_oauth_client_config():
