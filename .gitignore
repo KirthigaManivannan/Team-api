@@ -1,12 +1,27 @@
+
+# Environment variables
 .env
+.env.*
+!.env.example
+
+# Python virtual environments
 .venv/
 venv/
+
+# Python cache
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Other files
 *.zip
 .DS_Store
 .vscode/
+
+# Gmail credentials
 credentials.json
 token.json
+
+# Downloaded files
 downloads/
+
