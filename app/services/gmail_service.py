@@ -16,9 +16,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # Railway: set TOKEN_PATH=/app/data/token.json
 # Local: defaults to token.json in the project root
-TOKEN_PATH = Path(
-    os.getenv("TOKEN_PATH", str(ROOT / "token.json"))
-)
+if os.getenv("RAILWAY_ENVIRONMENT"):
+    TOKEN_PATH = Path(
+        os.getenv("TOKEN_PATH", "/app/data/token.json")
+    )
+else:
+    TOKEN_PATH = Path(
+        os.getenv("TOKEN_PATH", str(ROOT / "token.json"))
+    )
+
+TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Create the directory if it does not exist
 TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
