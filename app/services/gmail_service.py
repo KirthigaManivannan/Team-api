@@ -3,6 +3,10 @@ import base64
 import os
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -14,7 +18,11 @@ TOKEN_PATH = ROOT / "token.json"
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 LABEL_NAME = "Invoice-Processing"
 
-REDIRECT_URI = "http://127.0.0.1:8000/gmail/callback"
+REDIRECT_URI = os.getenv(
+    "REDIRECT_URI",
+    "http://127.0.0.1:8000/gmail/callback"
+)
+logger.info("Gmail OAuth redirect URI: %s", REDIRECT_URI)
 
 
 def get_oauth_client_config():
