@@ -281,3 +281,16 @@ pre.out.text{background:var(--bg);color:var(--ink)}
   font-size: .85rem;
   padding: .4rem .8rem;
 }
+
+.gmail-download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.gmail-download-actions button {
+  cursor: pointer;
+}

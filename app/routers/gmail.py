@@ -1,5 +1,8 @@
 
-from fastapi import APIRouter, HTTPException, Query
+import secrets
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 
 from app.errors import AppError
 from app.services import (
@@ -14,14 +17,154 @@ from app.services import (
 router = APIRouter(prefix="/gmail", tags=["Gmail Integration"])
 
 
+@router.get("/connect")
+def connect_gmail(request: Request):
+    """Start Google OAuth authorization."""
+
+    try:
+        state = secrets.token_urlsafe(32)
+        request.session["oauth_state"] = state
+
+        flow = gmail_service.create_oauth_flow(state=state)
+
+        authorization_url, _ = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent"
+        )
+
+        # Save the PKCE verifier so the callback can reuse it.
+        request.session["oauth_code_verifier"] = flow.code_verifier
+
+        return RedirectResponse(authorization_url)
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not start Gmail authorization: {str(exc)}"
+        )
+
+
+@router.get("/callback")
+def gmail_callback(
+    request: Request,
+    code: str = None,
+    state: str = None,
+    error: str = None
+):
+    """Handle Google's OAuth callback and save credentials."""
+
+    if error:
+        request.session.pop("oauth_state", None)
+        request.session.pop("oauth_code_verifier", None)
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Google authorization failed: {error}"
+        )
+
+    expected_state = request.session.pop("oauth_state", None)
+
+    if not expected_state or not state or not secrets.compare_digest(
+        expected_state, state
+    ):
+        request.session.pop("oauth_code_verifier", None)
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid OAuth state. Please try connecting again."
+        )
+
+    if not code:
+        request.session.pop("oauth_code_verifier", None)
+
+        raise HTTPException(
+            status_code=400,
+            detail="Google authorization code is missing."
+        )
+
+    # Retrieve the original PKCE verifier from the session.
+    code_verifier = request.session.pop("oauth_code_verifier", None)
+
+    if not code_verifier:
+        raise HTTPException(
+            status_code=400,
+            detail="OAuth code verifier is missing. Please reconnect Gmail."
+        )
+
+    try:
+        flow = gmail_service.create_oauth_flow(state=state)
+
+        # Restore the verifier generated during /connect.
+        flow.code_verifier = code_verifier
+
+        flow.fetch_token(code=code)
+
+        credentials = flow.credentials
+        gmail_service.save_credentials(credentials)
+
+        # Verify the Gmail account and saved token.
+        email_address = gmail_service.get_gmail_profile()
+
+        request.session["gmail_connected"] = True
+
+        return RedirectResponse(
+            url="/?gmail_connected=true",
+            status_code=303
+        )
+
+    except Exception as exc:
+        gmail_service.TOKEN_PATH.unlink(missing_ok=True)
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not complete Gmail authorization: {str(exc)}"
+        )
+
+
+@router.get("/status")
+def gmail_status():
+    """Return the current Gmail connection status."""
+
+    if not gmail_service.TOKEN_PATH.exists():
+        return {
+            "connected": False,
+            "email": None
+        }
+
+    try:
+        email_address = gmail_service.get_gmail_profile()
+
+        return {
+            "connected": True,
+            "email": email_address
+        }
+
+    except Exception:
+        return {
+            "connected": False,
+            "email": None
+        }
+
+
+@router.post("/disconnect")
+def disconnect_gmail():
+    """Remove the locally saved Gmail authorization."""
+
+    gmail_service.TOKEN_PATH.unlink(missing_ok=True)
+
+    return {
+        "success": True,
+        "connected": False,
+        "message": "Gmail disconnected successfully."
+    }
+
+
 @router.post("/process")
 def process_gmail_emails(
     max_results: int = Query(default=10, ge=1, le=50)
 ):
-    """
-    Read labelled Gmail messages, process attachments,
-    extract document fields and validate the results.
-    """
+    """Read labelled Gmail messages and process attachments."""
 
     try:
         service = gmail_service.get_gmail_service()
@@ -47,7 +190,6 @@ def process_gmail_emails(
     for message in messages:
         message_id = message["id"]
 
-        # Check whether this Gmail message was already processed
         if duplicate_service.is_gmail_message_processed(message_id):
             response["skipped"] += 1
 
@@ -61,14 +203,11 @@ def process_gmail_emails(
 
         try:
             details = gmail_service.get_email_details(
-                service,
-                message_id
+                service, message_id
             )
 
             attachments = gmail_service.get_email_attachments(
-                service,
-                message_id,
-                details["payload"]
+                service, message_id, details["payload"]
             )
 
             if not attachments:
@@ -86,27 +225,22 @@ def process_gmail_emails(
             attachment_results = []
 
             for attachment in attachments:
-
-                # Extract PDF text or perform OCR
                 extracted = file_service.extract_text(
                     attachment["filename"],
                     attachment["data"]
                 )
 
-                # AI document classification
                 classification = llm_service.classify(
                     extracted["text"]
                 )
 
                 doc_type = classification["document_type"]
 
-                # Extract structured document fields
                 extraction = llm_service.extract_fields(
                     extracted["text"],
                     doc_type
                 )
 
-                # Validate extracted information
                 validation = validation_service.validate(
                     doc_type,
                     extraction["fields"],
@@ -126,18 +260,17 @@ def process_gmail_emails(
                 })
 
                 gmail_results_service.save_gmail_extraction_result(
-    message_id=message_id,
-    subject=details["subject"],
-    sender=details["sender"],
-    filename=attachment["filename"],
-    document_type=doc_type,
-    classification_confidence=classification["confidence"],
-    fields=extraction["fields"],
-    line_items=extraction["line_items"],
-    validation=validation
-)
+                    message_id=message_id,
+                    subject=details["subject"],
+                    sender=details["sender"],
+                    filename=attachment["filename"],
+                    document_type=doc_type,
+                    classification_confidence=classification["confidence"],
+                    fields=extraction["fields"],
+                    line_items=extraction["line_items"],
+                    validation=validation
+                )
 
-            # Register only after all attachments finish successfully
             registered = duplicate_service.register_gmail_message(
                 message_id=message_id,
                 subject=details["subject"],
@@ -178,6 +311,7 @@ def process_gmail_emails(
 
     return response
 
+
 @router.get("/results")
 def get_gmail_results(
     limit: int = Query(default=50, ge=1, le=200)
@@ -199,6 +333,7 @@ def get_gmail_results(
             status_code=500,
             detail=f"Could not retrieve Gmail results: {str(exc)}"
         )
+
 
 @router.get("/history")
 def get_gmail_history(

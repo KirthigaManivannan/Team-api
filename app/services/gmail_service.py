@@ -1,39 +1,102 @@
 
 import base64
+import os
 from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+
+ROOT = Path(__file__).resolve().parents[2]
+TOKEN_PATH = ROOT / "token.json"
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 LABEL_NAME = "Invoice-Processing"
+
+REDIRECT_URI = "http://127.0.0.1:8000/gmail/callback"
+
+
+def get_oauth_client_config():
+    """Build Google OAuth configuration from environment variables."""
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+    if not client_id or not client_secret:
+        raise RuntimeError(
+            "GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing from .env"
+        )
+
+    return {
+        "web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [REDIRECT_URI]
+        }
+    }
+
+
+
+def create_oauth_flow(state=None):
+    flow = Flow.from_client_config(
+        get_oauth_client_config(),
+        scopes=SCOPES,
+        state=state,
+        autogenerate_code_verifier=True
+    )
+
+    flow.redirect_uri = REDIRECT_URI
+
+    return flow
+
+
+
+def save_credentials(creds):
+    """Save authorized Gmail credentials locally."""
+
+    TOKEN_PATH.write_text(
+        creds.to_json(),
+        encoding="utf-8"
+    )
 
 
 def get_gmail_service():
     """Connect to Gmail using the saved OAuth token."""
 
-    token_path = Path("token.json")
-
-    if not token_path.exists():
+    if not TOKEN_PATH.exists():
         raise RuntimeError(
-            "Gmail token not found. Run python gmail_test.py first."
+            "Gmail is not connected. Please connect your Gmail account first."
         )
 
     creds = Credentials.from_authorized_user_file(
-        str(token_path), SCOPES
+        str(TOKEN_PATH), SCOPES
     )
 
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        token_path.write_text(creds.to_json())
+        save_credentials(creds)
 
     if not creds.valid:
         raise RuntimeError(
-            "Gmail authorization expired. Run python gmail_test.py again."
+            "Gmail authorization expired. Please reconnect your Gmail account."
         )
 
     return build("gmail", "v1", credentials=creds)
+
+
+def get_gmail_profile():
+    """Retrieve the connected Gmail account address."""
+
+    service = get_gmail_service()
+
+    profile = service.users().getProfile(
+        userId="me"
+    ).execute()
+
+    return profile.get("emailAddress")
 
 
 def get_invoice_label(service):

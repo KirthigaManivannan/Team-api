@@ -10,6 +10,8 @@ import shutil
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+import os
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.errors import AppError
 from app.routers import document, email, extraction, duplicate, matching, payment, export, gmail
@@ -28,6 +30,12 @@ VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
 app = FastAPI(
     title="Intelligent Email & Document Extraction System",
     version=VERSION
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("OAUTH_STATE_SECRET"),
+    same_site="lax",
+    https_only=False
 )
 @app.on_event("startup")
 def start_background_tasks():
