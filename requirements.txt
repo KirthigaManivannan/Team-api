@@ -12,6 +12,6 @@ google-auth-httplib2
 google-auth-oauthlib
 
 apscheduler>=3.10,<4
-
 python-dotenv
 itsdangerous
+python-dateutil>=2.9.0
