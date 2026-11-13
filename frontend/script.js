@@ -764,6 +764,89 @@ function renderResult(it) {
   return h("div", {}, parts);
 }
 
+/* ---------- Individual Gmail downloads ---------- */
+
+function downloadGmailFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadSingleGmailJSON(item) {
+  const data = {
+    subject: item.subject,
+    sender: item.sender,
+    filename: item.filename,
+    document_type: item.document_type,
+    fields: item.fields || {},
+    line_items: item.line_items || [],
+    validation: item.validation || {}
+  };
+
+  const filename =
+    (item.filename || "gmail-document").replace(/\.[^.]+$/, "") +
+    ".json";
+
+  downloadGmailFile(
+    filename,
+    JSON.stringify(data, null, 2),
+    "application/json"
+  );
+
+  notify("Individual Gmail JSON downloaded.");
+}
+
+function downloadSingleGmailCSV(item) {
+  const fields = item.fields || {};
+
+  const headers = [
+    "subject",
+    "sender",
+    "filename",
+    "document_type",
+    "validation_status",
+    ...Object.keys(fields),
+    "line_items"
+  ];
+
+  const values = [
+    item.subject || "",
+    item.sender || "",
+    item.filename || "",
+    item.document_type || "",
+    item.validation?.status || "",
+    ...Object.values(fields),
+    JSON.stringify(item.line_items || [])
+  ];
+
+  const csv =
+    "\ufeff" +
+    headers.map(csvCell).join(",") +
+    "\r\n" +
+    values.map(csvCell).join(",") +
+    "\r\n";
+
+  const filename =
+    (item.filename || "gmail-document").replace(/\.[^.]+$/, "") +
+    ".csv";
+
+  downloadGmailFile(
+    filename,
+    csv,
+    "text/csv;charset=utf-8"
+  );
+
+  notify("Individual Gmail CSV downloaded.");
+}
+
 /* ---------- Gmail extraction results ---------- */
 
 async function loadGmailResults() {
@@ -843,8 +926,288 @@ document
   .querySelector("#refresh-gmail")
   .addEventListener("click", loadGmailResults);
 
+/* ---------- Gmail CSV and JSON downloads ---------- */
+
+// Add download buttons beside the Gmail refresh button.
+const gmailRefreshButton = document.querySelector("#refresh-gmail");
+
+const gmailExportActions = document.createElement("div");
+gmailExportActions.style.cssText =
+  "display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;";
+
+const gmailCsvButton = document.createElement("button");
+gmailCsvButton.type = "button";
+gmailCsvButton.className = "btn";
+gmailCsvButton.textContent = "Download CSV";
+
+const gmailJsonButton = document.createElement("button");
+gmailJsonButton.type = "button";
+gmailJsonButton.className = "btn primary";
+gmailJsonButton.textContent = "Download JSON";
+
+gmailExportActions.append(gmailCsvButton, gmailJsonButton);
+
+gmailRefreshButton.insertAdjacentElement(
+  "afterend",
+  gmailExportActions
+);
+
+
+// Download helper.
+function downloadGmailFile(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+
+// Fetch all available saved Gmail results.
+async function getGmailExportResults() {
+  const response = await fetch("/gmail/results?limit=200");
+
+  if (!response.ok) {
+    throw new Error("Unable to retrieve Gmail results.");
+  }
+
+  const data = await response.json();
+
+  if (!data.results || data.results.length === 0) {
+    throw new Error("No Gmail documents available to download.");
+  }
+
+  return data.results;
+}
+
+
+// Download complete Gmail results as JSON.
+async function downloadGmailJSON() {
+  try {
+    gmailJsonButton.disabled = true;
+    gmailJsonButton.textContent = "Preparing JSON...";
+
+    const results = await getGmailExportResults();
+
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      total_documents: results.length,
+      documents: results
+    };
+
+    downloadGmailFile(
+      JSON.stringify(exportData, null, 2),
+      "gmail-processed-documents.json",
+      "application/json"
+    );
+
+    notify(`JSON downloaded: ${results.length} document(s).`);
+
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    gmailJsonButton.disabled = false;
+    gmailJsonButton.textContent = "Download JSON";
+  }
+}
+
+
+// Convert Gmail results into CSV format.
+function buildGmailCSV(results) {
+  const fieldKeys = [];
+
+  results.forEach((item) => {
+    Object.keys(item.fields || {}).forEach((key) => {
+      if (!fieldKeys.includes(key)) {
+        fieldKeys.push(key);
+      }
+    });
+  });
+
+  const headers = [
+    "message_id",
+    "subject",
+    "sender",
+    "filename",
+    "document_type",
+    "classification_confidence",
+    "validation_status",
+    ...fieldKeys,
+    "line_items",
+    "validation_details"
+  ];
+
+  const rows = [headers];
+
+  results.forEach((item) => {
+    const fields = item.fields || {};
+
+    rows.push([
+      item.message_id,
+      item.subject,
+      item.sender,
+      item.filename,
+      item.document_type,
+      item.classification_confidence,
+      item.validation?.status,
+
+      ...fieldKeys.map((key) => fields[key]),
+
+      JSON.stringify(item.line_items || []),
+      JSON.stringify(item.validation || {})
+    ]);
+  });
+
+  return (
+    "\ufeff" +
+    rows
+      .map((row) => row.map(csvCell).join(","))
+      .join("\r\n") +
+    "\r\n"
+  );
+}
+
+
+// Download Gmail results as CSV.
+async function downloadGmailCSV() {
+  try {
+    gmailCsvButton.disabled = true;
+    gmailCsvButton.textContent = "Preparing CSV...";
+
+    const results = await getGmailExportResults();
+
+    const csv = buildGmailCSV(results);
+
+    downloadGmailFile(
+      csv,
+      "gmail-processed-documents.csv",
+      "text/csv;charset=utf-8"
+    );
+
+    notify(`CSV downloaded: ${results.length} document(s).`);
+
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    gmailCsvButton.disabled = false;
+    gmailCsvButton.textContent = "Download CSV";
+  }
+}
+
+
+// Attach download events.
+gmailCsvButton.addEventListener("click", downloadGmailCSV);
+gmailJsonButton.addEventListener("click", downloadGmailJSON);
+
+
 /* Load Gmail results when website opens */
-loadGmailResults();
+
+async function loadGmailResults() {
+  const container = document.querySelector("#gmail-results");
+
+  container.textContent = "Loading Gmail results...";
+
+  try {
+    const response = await fetch("/gmail/results?limit=50");
+
+    if (!response.ok) {
+      throw new Error("Unable to retrieve Gmail results.");
+    }
+
+    const data = await response.json();
+
+    container.replaceChildren();
+
+    if (data.results.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent = "No Gmail documents have been saved yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    data.results.forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "gmail-result";
+
+      const heading = document.createElement("h3");
+      heading.textContent = item.subject || "No subject";
+
+      const sender = document.createElement("p");
+      sender.textContent = "From: " + (item.sender || "Unknown");
+
+      const filename = document.createElement("p");
+      filename.textContent = "File: " + (item.filename || "Unknown");
+
+      const type = document.createElement("p");
+      type.textContent =
+        "Document type: " + (item.document_type || "Unknown");
+
+      const status = document.createElement("p");
+      status.textContent =
+        "Validation: " + (item.validation?.status || "Not available");
+
+      const fieldsTitle = document.createElement("h4");
+      fieldsTitle.textContent = "Extracted fields";
+
+      const fieldsList = document.createElement("ul");
+
+      Object.entries(item.fields || {}).forEach(([key, value]) => {
+        const li = document.createElement("li");
+        li.textContent = `${key}: ${value ?? ""}`;
+        fieldsList.appendChild(li);
+      });
+
+      // Individual download buttons
+      const actions = document.createElement("div");
+      actions.className = "gmail-download-actions";
+
+      const jsonButton = document.createElement("button");
+      jsonButton.type = "button";
+      jsonButton.className = "btn";
+      jsonButton.textContent = "Download JSON";
+
+      jsonButton.addEventListener("click", () => {
+        downloadSingleGmailJSON(item);
+      });
+
+      const csvButton = document.createElement("button");
+      csvButton.type = "button";
+      csvButton.className = "btn primary";
+      csvButton.textContent = "Download CSV";
+
+      csvButton.addEventListener("click", () => {
+        downloadSingleGmailCSV(item);
+      });
+
+      actions.append(jsonButton, csvButton);
+
+      card.append(
+        heading,
+        sender,
+        filename,
+        type,
+        status,
+        fieldsTitle,
+        fieldsList,
+        actions
+      );
+
+      container.appendChild(card);
+    });
+
+  } catch (error) {
+    container.textContent = error.message;
+  }
+}
+
 
 /* ---------- Gmail processing history ---------- */
 
@@ -1493,3 +1856,111 @@ fetch("/health")
     $("#version").textContent = "v" + j.version;
   })
   .catch(() => {});
+
+/* ---------- Gmail OAuth connection ---------- */
+
+async function checkGmailStatus() {
+  const status = document.querySelector("#gmail-status");
+  const connectBtn = document.querySelector("#connect-gmail");
+  const fetchBtn = document.querySelector("#fetch-gmail");
+  const disconnectBtn = document.querySelector("#disconnect-gmail");
+
+  try {
+    const response = await fetch("/gmail/status");
+
+    if (!response.ok) {
+      throw new Error("Unable to check Gmail status.");
+    }
+
+    const data = await response.json();
+
+    if (data.connected) {
+      status.textContent = `Connected: ${data.email}`;
+      connectBtn.hidden = true;
+      fetchBtn.disabled = false;
+      disconnectBtn.hidden = false;
+    } else {
+      status.textContent = "Gmail is not connected.";
+      connectBtn.hidden = false;
+      fetchBtn.disabled = true;
+      disconnectBtn.hidden = true;
+    }
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+// Connect Gmail using Google OAuth
+document.querySelector("#connect-gmail")
+  .addEventListener("click", () => {
+    document.querySelector("#gmail-status").textContent =
+      "Redirecting to Google...";
+    window.location.href = "/gmail/connect";
+  });
+
+// Fetch invoice emails
+document.querySelector("#fetch-gmail")
+  .addEventListener("click", async () => {
+    const status = document.querySelector("#gmail-status");
+    const button = document.querySelector("#fetch-gmail");
+
+    button.disabled = true;
+    status.textContent = "Fetching and processing Gmail emails...";
+
+    try {
+      const response = await fetch("/gmail/process", {
+        method: "POST"
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Gmail processing failed.");
+      }
+
+      status.textContent =
+        `Found: ${data.total_emails_found} | ` +
+        `Processed: ${data.processed} | Skipped: ${data.skipped}`;
+
+      await loadGmailResults();
+      await loadGmailHistory();
+
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+// Disconnect Gmail
+document.querySelector("#disconnect-gmail")
+  .addEventListener("click", async () => {
+    const status = document.querySelector("#gmail-status");
+    const button = document.querySelector("#disconnect-gmail");
+
+    button.disabled = true;
+
+    try {
+      const response = await fetch("/gmail/disconnect", {
+        method: "POST"
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not disconnect Gmail.");
+      }
+
+      await checkGmailStatus();
+
+      status.textContent = "Gmail disconnected successfully.";
+
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+// Check Gmail connection when the page loads
+checkGmailStatus();

@@ -63,7 +63,26 @@
   
   </main>
 
-  <section class="gmail-section card" aria-labelledby="gmail-title">
+ <section class="gmail-section card" aria-labelledby="gmail-connect-title">
+  <div class="gmail-heading">
+    <div>
+      <h2 id="gmail-connect-title">Gmail Account Connection</h2>
+      <p id="gmail-status" aria-live="polite">Checking Gmail connection...</p>
+    </div>
+    <div class="gmail-actions">
+      <button class="btn primary" id="connect-gmail" type="button">
+        Connect Gmail
+      </button>
+      <button class="btn primary" id="fetch-gmail" type="button" disabled>
+        Fetch Emails
+      </button>
+      <button class="btn" id="disconnect-gmail" type="button" hidden>
+        Disconnect
+      </button>
+    </div>
+  </div>
+</section>
+
     <div class="gmail-heading">
       <div>
         <h2 id="gmail-title">Gmail Processed Documents</h2>
