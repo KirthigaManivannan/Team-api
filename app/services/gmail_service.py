@@ -14,12 +14,9 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Railway: set TOKEN_PATH=/app/data/token.json
-# Local: defaults to token.json in the project root
+# # Configure Gmail token storage
 if os.getenv("RAILWAY_ENVIRONMENT"):
-    TOKEN_PATH = Path(
-        os.getenv("TOKEN_PATH", "/app/data/token.json")
-    )
+    TOKEN_PATH = Path("/app/data/token.json")
 else:
     TOKEN_PATH = Path(
         os.getenv("TOKEN_PATH", str(ROOT / "token.json"))
@@ -27,9 +24,7 @@ else:
 
 TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-# Create the directory if it does not exist
-TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-
+logger.info("Gmail token storage path: %s", TOKEN_PATH)
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 LABEL_NAME = "Invoice-Processing"
 
