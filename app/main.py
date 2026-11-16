@@ -31,12 +31,21 @@ app = FastAPI(
     title="Intelligent Email & Document Extraction System",
     version=VERSION
 )
+
+IS_PRODUCTION = bool(os.getenv("RAILWAY_PUBLIC_DOMAIN"))
+
+SESSION_SECRET = os.getenv("OAUTH_STATE_SECRET")
+
+if IS_PRODUCTION and not SESSION_SECRET:
+    raise RuntimeError("OAUTH_STATE_SECRET is missing")
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("OAUTH_STATE_SECRET", "dev-secret-change-me"),
+    secret_key=SESSION_SECRET or "dev-secret-change-me",
     same_site="lax",
-    https_only=bool(os.getenv("RAILWAY_ENVIRONMENT"))
+    https_only=IS_PRODUCTION
 )
+
 @app.on_event("startup")
 def start_background_tasks():
     start_gmail_scheduler()
