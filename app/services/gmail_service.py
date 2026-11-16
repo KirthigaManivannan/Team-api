@@ -9,20 +9,21 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
-
+import os
 logger = logging.getLogger(__name__)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# # Configure Gmail token storage
-if os.getenv("RAILWAY_ENVIRONMENT"):
-    TOKEN_PATH = Path("/app/data/token.json")
-else:
-    TOKEN_PATH = Path(
-        os.getenv("TOKEN_PATH", str(ROOT / "token.json"))
-    )
+# Configure Gmail token storage
+TOKEN_PATH = Path(
+    os.getenv("TOKEN_PATH", str(ROOT / "token.json"))
+)
 
 TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+logger.info("Gmail token storage path: %s", TOKEN_PATH)
+
 
 logger.info("Gmail token storage path: %s", TOKEN_PATH)
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
